@@ -3,7 +3,18 @@
 # Introduction
 This project is a part of the PitchTrainer project. The goal of this project is to create a similarity calculation model for the PitchTrainer project. The model is based on the Siamese network architecture and uses LSTM layers to process the input data.
 
+# Dataset
+Data is in the root folder of the project. The dataset is a csv file with the following columns:
+
+
 # Usage
+## 0. Python Notebook Version
+The python notebook version of this project is available at the following folder:
+```
+./python_notebook_version/
+```
+Note that the dataset path in the notebook is set to the default path. If you want to change the dataset path, you can change it in the notebook.
+
 ## 1.1. Training and Testing
 To train the model, run the following command:
 ```
