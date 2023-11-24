@@ -10,7 +10,7 @@ import pickle
 
 # this part is for training, including data preprocessing, model training, and model saving
 
-file_path = "./questions.csv"
+file_path = "myResource/questions.csv"
 
 # 1. Load the data
 data = pd.read_csv(file_path)

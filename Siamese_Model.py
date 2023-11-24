@@ -4,6 +4,8 @@ import torch.nn.functional as F
 import numpy as np
 import nltk
 import time
+from collections import defaultdict
+import pickle
 
 class SiameseNetwork(nn.Module):
     def __init__(self, vocab_size=41699, d_model=128):
@@ -122,7 +124,17 @@ def classify(test_Q1, test_Q2, y, threshold, model, vocab, batch_size=64):
 def pad_sequences(sequences, max_len, pad_value=0):
     return np.array([seq + [pad_value] * (max_len - len(seq)) for seq in sequences])
 
-def predict(question1, question2, threshold, model, vocab, verbose=False):
+# Load the vocab dictionary from the file
+with open('./myResource/vocab.pkl', 'rb') as f:
+    loaded_vocab_dict = pickle.load(f)
+# Convert it back to a defaultdict if necessary
+loaded_vocab = defaultdict(lambda: 0, loaded_vocab_dict)
+
+# To load the model later
+loaded_model = torch.load('./model/model_entire.pth')
+loaded_model.eval()  # Set the model to evaluation mode
+
+def predict(question1, question2, threshold, model=None, vocab=None, verbose=False):
     """Function for predicting if two questions are duplicates in PyTorch.
 
     Args:
@@ -136,6 +148,10 @@ def predict(question1, question2, threshold, model, vocab, verbose=False):
     Returns:
         bool: True if the questions are duplicates, False otherwise.
     """
+    if vocab is None:
+        vocab = loaded_vocab
+    if model is None:
+        model = loaded_model
     model.eval()  # Set the model to evaluation mode
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -156,14 +172,13 @@ def predict(question1, question2, threshold, model, vocab, verbose=False):
         v1, v2 = model(q1_tensor, q2_tensor)
         cos_sim = torch.nn.functional.cosine_similarity(v1, v2)
         res = cos_sim.item() > threshold
-
     if verbose:
         print("Q1 = ", question1)
         print("Q2 = ", question2)
         print("Cosine Similarity = ", cos_sim.item())
         print("Result = ", res)
 
-    return res
+    return res, cos_sim.item()
 
 if __name__ == '__main__':
     # 1. 实例化模型
