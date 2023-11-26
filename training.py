@@ -145,7 +145,7 @@ print("Number of trainable parameters:", sum(p.numel() for p in model.parameters
 
 # Train the model
 print("hyperparameters: learning_rate=0.01, epochs=5")
-train_model(model, train_loader, val_loader, learning_rate=0.01, epochs=5)
+train_model(model, train_loader, val_loader, learning_rate=0.01, epochs=10)
 print("Done training!")
 
 # Save the entire model
