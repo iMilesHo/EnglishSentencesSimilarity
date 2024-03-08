@@ -1,5 +1,5 @@
 from data_preprocessing import split_data, tokens_to_sentence
-from Siamese_Model import SiameseNetwork, train_model, classify, pad_sequences, predict
+from Siamese_Model import SiameseNetwork, train_model, classify_and_confusion_matrix, pad_sequences, predict
 import numpy as np
 import pandas as pd
 import nltk
@@ -144,7 +144,7 @@ print("Model:", model)
 print("Number of trainable parameters:", sum(p.numel() for p in model.parameters() if p.requires_grad))
 
 # Train the model
-print("hyperparameters: learning_rate=0.01, epochs=5")
+print("hyperparameters: learning_rate=0.01, epochs=10")
 train_model(model, train_loader, val_loader, learning_rate=0.01, epochs=10)
 print("Done training!")
 
@@ -160,7 +160,7 @@ test_Q1_padded = pad_sequences(Q1_test, max_length, vocab['<PAD>'])
 test_Q2_padded = pad_sequences(Q2_test, max_length, vocab['<PAD>'])
 
 # Example usage:
-accuracy = classify(test_Q1_padded, test_Q2_padded, y_test, 0.7, model, vocab, batch_size=64)
+accuracy, cm = classify_and_confusion_matrix(test_Q1_padded, test_Q2_padded, y_test, 0.7, model, vocab, batch_size=64)
 print("Accuracy:", accuracy)
 
 if __name__ == '__main__':

@@ -6,12 +6,15 @@ import nltk
 import time
 from collections import defaultdict
 import pickle
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
 
 class SiameseNetwork(nn.Module):
-    def __init__(self, vocab_size=41699, d_model=128):
+    def __init__(self, vocab_size=41699, embedding_dim=128, hidden_size=128):
         super(SiameseNetwork, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, d_model)
-        self.lstm = nn.LSTM(d_model, d_model, batch_first=True)
+        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.lstm = nn.LSTM(embedding_dim, hidden_size, batch_first=True, bidirectional=True)
         # No need to explicitly define mean and normalization, can be done in forward
 
     def forward(self, x1, x2):
@@ -23,7 +26,8 @@ class SiameseNetwork(nn.Module):
         x1, _ = self.lstm(x1)
         x2, _ = self.lstm(x2)
 
-        # Mean over sequence
+        # Mean over sequence.
+        # For example, if the input is (batch_size, seq_len, hidden_size), we want to take the mean over the seq_len dimension
         x1 = torch.mean(x1, dim=1)
         x2 = torch.mean(x2, dim=1)
 
@@ -51,36 +55,62 @@ def triplet_loss_fn(v1, v2, margin=0.25):
     triplet_loss = torch.mean(triplet_loss1 + triplet_loss2)
     return triplet_loss
 
+def plot_losses(train_losses, val_losses):
+    plt.figure(figsize=(10, 5))
+    plt.plot(train_losses, label='Training Loss')
+    plt.plot(val_losses, label='Validation Loss')
+    plt.title('Training and Validation Losses')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
 def train_model(model, train_loader, val_loader, learning_rate=0.01, epochs=10):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    train_losses = []
+    val_losses = []
+
     for epoch in range(epochs):
         start_time = time.time()
         model.train()
-        train_loss = 0
+        running_train_loss = 0
+
         for q1_q2 in train_loader:
             q1, q2 = q1_q2[0].to(device), q1_q2[1].to(device)
             optimizer.zero_grad()
             v1, v2 = model(q1, q2)
             loss = triplet_loss_fn(v1, v2)
-            train_loss += loss.item()
             loss.backward()
             optimizer.step()
-        train_loss /= len(train_loader)
+            running_train_loss += loss.item()
+
+        # Calculate average training loss for this epoch
+        train_loss = running_train_loss / len(train_loader)
+        train_losses.append(train_loss)
 
         model.eval()
-        val_loss = 0
+        running_val_loss = 0
         with torch.no_grad():
             for q1_q2 in val_loader:
                 q1, q2 = q1_q2[0].to(device), q1_q2[1].to(device)
                 v1, v2 = model(q1, q2)
-                val_loss += triplet_loss_fn(v1, v2).item()
-        end_time = time.time()
-        val_loss /= len(val_loader)
-        print(f"Epoch {epoch + 1}, Train Loss: {train_loss}, Val Loss: {val_loss}, Time: {end_time - start_time}")
+                loss = triplet_loss_fn(v1, v2)
+                running_val_loss += loss.item()
 
-def classify(test_Q1, test_Q2, y, threshold, model, vocab, batch_size=64):
-    """Function to test the accuracy of the model in PyTorch.
+        # Calculate average validation loss for this epoch
+        val_loss = running_val_loss / len(val_loader)
+        val_losses.append(val_loss)
+
+        end_time = time.time()
+        print(f"Epoch {epoch + 1}: Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Time: {(end_time - start_time):.2f}s")
+
+    # After training, plot the training and validation losses
+    plot_losses(train_losses, val_losses)
+
+def classify_and_confusion_matrix(test_Q1, test_Q2, y, threshold, model, vocab, batch_size=64):
+    """Function to test the accuracy of the model and draw a confusion matrix in PyTorch.
 
     Args:
         test_Q1 (numpy.ndarray): Array of Q1 questions.
@@ -93,10 +123,12 @@ def classify(test_Q1, test_Q2, y, threshold, model, vocab, batch_size=64):
 
     Returns:
         float: Accuracy of the model.
+        np.ndarray: Confusion matrix.
     """
     model.eval()  # Set the model to evaluation mode
-    accuracy = 0
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    all_predictions = []
+    all_targets = []
 
     with torch.no_grad():
         for i in range(0, len(test_Q1), batch_size):
@@ -111,15 +143,27 @@ def classify(test_Q1, test_Q2, y, threshold, model, vocab, batch_size=64):
             cos_sim = torch.nn.functional.cosine_similarity(v1, v2)
 
             # Make predictions based on the threshold
-            predictions = cos_sim > threshold
+            predictions = (cos_sim > threshold).cpu().numpy()
+            all_predictions.extend(predictions)
 
-            # Update accuracy
-            accuracy += torch.sum(predictions == torch.tensor(y_test, dtype=torch.bool)).item()
+            # Collect actual targets
+            all_targets.extend(y_test)
 
-    # Compute overall accuracy
-    accuracy = accuracy / len(test_Q1)
+    # Compute the confusion matrix
+    cm = confusion_matrix(all_targets, all_predictions)
 
-    return accuracy
+    # Compute accuracy
+    accuracy = np.mean(np.array(all_targets) == np.array(all_predictions))
+
+    # Plotting the confusion matrix
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Not Duplicate', 'Duplicate'], yticklabels=['Not Duplicate', 'Duplicate'])
+    plt.xlabel('Predicted Labels')
+    plt.ylabel('True Labels')
+    plt.title('Confusion Matrix')
+    plt.show()
+
+    return accuracy, cm
 
 def pad_sequences(sequences, max_len, pad_value=0):
     return np.array([seq + [pad_value] * (max_len - len(seq)) for seq in sequences])
